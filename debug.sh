@@ -12,7 +12,7 @@ echo "Notice: plz close kptr_restrict first"
 echo ""
 tail /proc/kallsyms
 echo "------------------------------------------------------------"
-head -n 3 /proc/kallsyms
+head /proc/kallsyms
 echo "------------------------------------------------------------"
 text=$(grep 0 /sys/module/$dev_name/sections/.text)
 bss=$(grep 0 /sys/module/$dev_name/sections/.bss)
