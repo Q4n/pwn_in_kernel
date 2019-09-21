@@ -1,6 +1,6 @@
 chmod 755 ./gen_cpio.sh
 chmod 755 ./build.sh
-chmod 755 ./extract-vmlinux
+chmod 755 ./untils/extract-vmlinux
 mkdir rootfs
 cp *.cpio ./rootfs/rootfs.cpio
 cd rootfs
